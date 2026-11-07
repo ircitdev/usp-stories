@@ -148,7 +148,7 @@ export function registerIpc(): void {
   })
   handle('story:visuals', (projectId: string, mode: 'missing' | 'all') => generateVisuals(projectId, mode === 'all' ? 'all' : 'missing'))
 
-  handle('generate:clipImage', (clipId: string) => generateClipImage(clipId))
+  handle('generate:clipImage', (clipId: string, modelId?: string | null) => generateClipImage(clipId, modelId))
   handle('generate:clipVideo', (clipId: string, modelId?: string | null) => generateClipVideo(clipId, modelId))
   handle('generate:clipTts', (clipId: string, newTake?: boolean) => generateClipTts(clipId, !!newTake))
   handle('generate:characterSheet', (characterId: string) => generateCharacterSheet(characterId))

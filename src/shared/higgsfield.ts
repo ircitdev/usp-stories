@@ -64,6 +64,10 @@ export const LOCAL_MODELS: HfModel[] = [
 /** The talking-head model: it needs the clip's voice, and the face of the clip picture is kept exactly. */
 export const TALKING_HEAD_MODEL = 'local/infinitetalk'
 
+/** Pictures made in the user's Chrome: Google Flow's agent, or ChatGPT. Not in the model lists; picked per clip. */
+export const FLOW_IMAGE_MODEL = 'flow/image'
+export const CHATGPT_IMAGE_MODEL = 'chatgpt/image'
+
 /** Video through Google Flow (Omni) open in the user's Chrome; it spends Flow's own credits, not Higgsfield's. */
 export const FLOW_VIDEO_MODEL = 'flow/veo'
 export const FLOW_MODELS: HfModel[] = [

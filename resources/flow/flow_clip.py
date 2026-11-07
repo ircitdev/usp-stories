@@ -4,6 +4,7 @@
 #   FLOW_PROJECT — адрес проекта Flow (пусто: первая открытая вкладка проекта)
 #   FLOW_TIMEOUT — сколько ждать готового видео, секунд (по умолчанию 900)
 #   FLOW_DRY=1   — ничего не отправлять: скачать первое готовое видео на текущей странице (проверка скачивания)
+#   FLOW_KIND    — video (по умолчанию) или image: картинка вместо видео
 # Печатает строки «PROGRESS {...}» и в конце «RESULT {...}» (JSON).
 # Подтверждает только «Одобрить» для своего запроса; «Всегда одобрять» не нажимает никогда.
 import json, os, re, time
@@ -16,6 +17,9 @@ def fail(msg):
     raise SystemExit(0)
 
 DRY = os.environ.get("FLOW_DRY") == "1"
+KIND = os.environ.get("FLOW_KIND", "video")
+IMAGE = KIND == "image"
+WHAT = "картинку" if IMAGE else "видео"
 OUT = os.environ["FLOW_OUT"]
 PROJ = os.environ.get("FLOW_PROJECT", "").strip().rstrip("/")
 TIMEOUT = int(os.environ.get("FLOW_TIMEOUT", "900"))
@@ -52,12 +56,20 @@ def go_root():
         js(f"location.href={json.dumps(ROOT)}"); wait(4)
 
 def filter_videos():
-    js("""[...document.querySelectorAll('button')].find(b=>b.innerText.includes('videocam') && b.innerText.trim().endsWith('Видео'))?.click()"""); wait(2)
+    """Shows only the kind of media this run makes: «Видео» or «Изображения»."""
+    icon, title = ("image", "Изображения") if IMAGE else ("videocam", "Видео")
+    js(f"""[...document.querySelectorAll('button')].find(b=>b.innerText.includes('{icon}') && b.innerText.trim().endsWith('{title}'))?.click()"""); wait(2)
 
-TILES = """[...document.querySelectorAll('flow-grid-tile-container')].filter(t=>t.querySelector('flow-video-tile')).map((t,i)=>({
-  i, id:((t.querySelector('img')||{}).src||'').split('=')[0]||null, label:t.getAttribute('aria-label')||'',
-  done:t.innerText.includes('play_circle'), bad:/warning|Ошибка|не удалось/i.test(t.innerText),
-  why:t.innerText.split(String.fromCharCode(10)).filter(l=>l.length>25)[0]||''}))"""
+# Tiles of this run's kind. Pictures are any media tile that is not a video, character or collection.
+OF_KIND = ("(t=>t.querySelector('flow-image-tile') || (t.querySelector('img') && !t.querySelector('flow-video-tile,flow-character-tile,flow-collection-tile')))"
+           if IMAGE else "(t=>t.querySelector('flow-video-tile'))")
+DONE = ("(t=>{const i=t.querySelector('img'); return !!i && i.naturalWidth>0 && !/\\d+\\s*%/.test(t.innerText)})"
+        if IMAGE else "(t=>t.innerText.includes('play_circle'))")
+
+TILES = f"""[...document.querySelectorAll('flow-grid-tile-container')].filter({OF_KIND}).map((t,i)=>({{
+  i, id:((t.querySelector('img')||{{}}).src||'').split('=')[0]||null, label:t.getAttribute('aria-label')||'',
+  done:{DONE}(t), bad:/warning|Ошибка|не удалось/i.test(t.innerText),
+  why:t.innerText.split(String.fromCharCode(10)).filter(l=>l.length>25)[0]||''}}))"""
 
 def tiles():
     return js(TILES) or []
@@ -67,7 +79,7 @@ def download(index):
     Clicking the tile itself only plays it in place; fetching the video URL from the page is refused by Flow."""
     dl = os.path.dirname(os.path.abspath(OUT)); os.makedirs(dl, exist_ok=True)
     cdp("Browser.setDownloadBehavior", behavior="allow", downloadPath=dl, eventsEnabled=True)
-    ok = js(f"""(()=>{{const t=[...document.querySelectorAll('flow-grid-tile-container')].filter(t=>t.querySelector('flow-video-tile'))[{index}];
+    ok = js(f"""(()=>{{const t=[...document.querySelectorAll('flow-grid-tile-container')].filter({OF_KIND})[{index}];
               if(!t) return false; t.scrollIntoView({{block:'center'}});
               const b=[...t.querySelectorAll('button')].find(b=>b.getAttribute('aria-label')==='Дополнительные параметры');
               if(!b) return false; b.click(); return true}})()""")
@@ -77,27 +89,34 @@ def download(index):
         wait(1.5)
         if ax_click("Скачать", role="menuitem"): break
         # The menu can close on the first scroll; open it again.
-        js(f"""(()=>{{const t=[...document.querySelectorAll('flow-grid-tile-container')].filter(t=>t.querySelector('flow-video-tile'))[{index}];
+        js(f"""(()=>{{const t=[...document.querySelectorAll('flow-grid-tile-container')].filter({OF_KIND})[{index}];
               [...t.querySelectorAll('button')].find(b=>b.getAttribute('aria-label')==='Дополнительные параметры')?.click()}})()""")
     else:
         fail("В меню карточки Flow нет пункта «Скачать»")
     wait(1.5)
-    if not ax_click("720p", role="menuitem", contains=True): fail("В меню скачивания Flow нет пункта 720p")
+    if IMAGE:
+        items = [n.get("name", {}).get("value", "") for n in cdp("Accessibility.getFullAXTree")["nodes"] if n.get("role", {}).get("value") == "menuitem"]
+        out("PROGRESS", message="Варианты скачивания Flow: " + ", ".join(i for i in items if i)[:200])
+        pick = next((i for i in items if re.search(r"1K|2K|4K|Оригинал|Original|PNG|JPG|JPEG", i)), None)
+        if not pick or not ax_click(pick, role="menuitem"):
+            fail("В меню скачивания Flow нет варианта для картинки: " + ", ".join(items)[:200])
+    elif not ax_click("720p", role="menuitem", contains=True): fail("В меню скачивания Flow нет пункта 720p")
     for _ in range(120):
         time.sleep(1)
-        new = [f for f in set(os.listdir(dl)) - before if f.endswith(".mp4")]
+        new = [f for f in set(os.listdir(dl)) - before if re.search(r"\.(png|jpe?g|webp)$" if IMAGE else r"\.mp4$", f, re.I) and not f.endswith(".crdownload")]
         if new:
             time.sleep(1)
-            os.replace(os.path.join(dl, new[0]), OUT)
-            return
+            target = OUT if not IMAGE else os.path.splitext(OUT)[0] + os.path.splitext(new[0])[1].lower()
+            os.replace(os.path.join(dl, new[0]), target)
+            return target
     fail("Flow не отдал файл за 2 минуты")
 
 if DRY:
     t = [x for x in tiles() if x["done"]]
-    if not t: fail("На странице нет готовых видео")
+    if not t: fail(f"На странице нет готовых {'картинок' if IMAGE else 'видео'}")
     out("PROGRESS", message=f"Скачиваем «{t[0]['label']}»")
-    download(t[0]["i"])
-    out("RESULT", ok=True, file=OUT, label=t[0]["label"])
+    saved = download(t[0]["i"])
+    out("RESULT", ok=True, file=saved, label=t[0]["label"])
     raise SystemExit(0)
 
 # 1. Wait until Flow has finished earlier videos: a late one would otherwise be taken for ours.
@@ -105,7 +124,7 @@ go_root(); filter_videos()
 for _ in range(60):
     busy = [x for x in tiles() if not x["done"] and not x["bad"]]
     if not busy: break
-    out("PROGRESS", message=f"Ждём, пока Flow закончит предыдущие видео ({len(busy)})")
+    out("PROGRESS", message=f"Ждём, пока Flow закончит предыдущие {'картинки' if IMAGE else 'видео'} ({len(busy)})")
     time.sleep(10); go_root(); filter_videos()
 # A tile is known by its title and thumbnail; one without a thumbnail yet, by its title.
 key_of = lambda x: (x["label"], x["id"] or "")
@@ -151,7 +170,14 @@ for i, part in enumerate(re.split(r"@\[([^\]]+)\]", PROMPT)):
         mention(part.strip())
     elif part:
         type_text(part)
-wait(1); press_key("Enter")
+wait(1)
+FIELD = "([...document.querySelectorAll('textarea,[contenteditable=true],[role=textbox]')].find(e=>(e.getAttribute('aria-label')||e.getAttribute('placeholder')||'').includes('Что вы хотите создать'))||{})"
+typed = (js(f"({FIELD}.value||{FIELD}.innerText||'').trim().length") or 0)
+if typed < 10: fail("Не удалось набрать запрос в поле Flow — кликните по вкладке Flow и повторите.")
+press_key("Enter"); wait(2)
+# Enter may only add a line in some states of the field: then the send arrow.
+if (js(f"({FIELD}.value||{FIELD}.innerText||'').trim().length") or 0) > 10:
+    js("[...document.querySelectorAll('button')].find(b=>b.innerText.trim()==='arrow_forward')?.click()"); wait(2)
 PROMPT_TEXT = re.sub(r"@\[([^\]]+)\]", lambda m: m.group(1), PROMPT)
 
 # 3. Flow asks to spend its credits for each video: approve this one request only.
@@ -174,7 +200,7 @@ for _ in range(60):
     k = text.rfind(key)
     tail = text[k + len(PROMPT_TEXT):] if k >= 0 else ""
     # Flow sometimes shows an error and then queues the video anyway: only a refusal, or an error that stays, fails.
-    if re.search(r"запущен|очеред", tail):
+    if re.search(r"запущен|очеред|создаю|создаётся|генерирую|генерация изображ|сгенерирован|успешно", tail, re.I):
         break
     if re.search(r"нарушает|не могу", tail):
         fail("Flow отклонил запрос: " + tail.strip().split("\n")[0][:200])
@@ -186,7 +212,7 @@ else:
     fail("Flow не ответил на запрос за 3 минуты")
 
 # 4. Wait for the new video in the project and download it.
-out("PROGRESS", message="Flow создаёт видео")
+out("PROGRESS", message=f"Flow создаёт {WHAT}")
 start = time.time(); found = None
 while time.time() - start < TIMEOUT:
     time.sleep(10)
@@ -197,12 +223,12 @@ while time.time() - start < TIMEOUT:
     if done:
         found = done[0]; break
     if bad:
-        fail("Flow не смог создать видео «" + bad[0]["label"][:80] + "»: " + (bad[0].get("why") or "ошибка генерации")[:220])
-    out("PROGRESS", message=f"Flow создаёт видео… {int(time.time() - start)} с")
+        fail(f"Flow не смог создать {WHAT} «" + bad[0]["label"][:80] + "»: " + (bad[0].get("why") or "ошибка генерации")[:220])
+    out("PROGRESS", message=f"Flow создаёт {WHAT}… {int(time.time() - start)} с")
 if not found:
-    fail(f"Видео во Flow не появилось за {TIMEOUT // 60} мин. Возможно, оно ещё в очереди — проверьте вкладку Flow.")
-out("PROGRESS", message="Скачиваем видео из Flow")
-download(found["i"])
+    fail(f"{'Картинка' if IMAGE else 'Видео'} во Flow не появилась за {TIMEOUT // 60} мин. Возможно, оно ещё в очереди — проверьте вкладку Flow.")
+out("PROGRESS", message=f"Скачиваем {WHAT} из Flow")
+saved = download(found["i"])
 go_root()
 js("""[...document.querySelectorAll('button')].find(b=>b.innerText.trim().endsWith('Все типы'))?.click()""")
-out("RESULT", ok=True, file=OUT, label=found["label"], approved=approved, approved_text=approved_text)
+out("RESULT", ok=True, file=saved, label=found["label"], approved=approved, approved_text=approved_text)

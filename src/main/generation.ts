@@ -1,14 +1,15 @@
+import * as chatgpt from './services/chatgpt'
 import { MODEL_PACKS, PACK_OF_MODEL } from '@shared/localModels'
 import { packReady } from './localModels'
 import { record } from './usage'
 import { randomUUID } from 'node:crypto'
 import { execFile } from 'node:child_process'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import ffmpegStatic from 'ffmpeg-static'
 import { estimateWordTimings } from '@shared/captions'
 import { speakable, stripVoiceTags } from '@shared/speech'
-import { NO_MUSIC, TALKING_HEAD_MODEL, isFlowModel, fitDuration, getImageModel, getVideoModel, imageBody, isLocalModel, maxRefs, promptLimit, videoBody, type HfModel } from '@shared/higgsfield'
+import { CHATGPT_IMAGE_MODEL, FLOW_IMAGE_MODEL, NO_MUSIC, TALKING_HEAD_MODEL, isFlowModel, fitDuration, getImageModel, getVideoModel, imageBody, isLocalModel, maxRefs, promptLimit, videoBody, type HfModel } from '@shared/higgsfield'
 import { getStyle } from '@shared/styles'
 import type { AspectRatio, Asset, Character, Clip, CreditEstimate, Job, Project, WordTiming } from '@shared/types'
 import { getDb } from './db'
@@ -478,9 +479,34 @@ function uploadAsset(asset: Asset, signal: AbortSignal): Promise<string> {
 
 // ---------- public entry points ----------
 
-export function generateClipImage(clipId: string): Job {
+/** `modelId` overrides the project's image model for this clip only: a local or cloud model, Google Flow or ChatGPT in Chrome. */
+export function generateClipImage(clipId: string, modelId?: string | null): Job {
   const existing = activeJobFor({ clipId }, 'image')
   if (existing) return existing
+  if (modelId === FLOW_IMAGE_MODEL || modelId === CHATGPT_IMAGE_MODEL) return generateBrowserImage(clipId, modelId)
+  if (modelId) {
+    // A model picked in the clip panel is used for this picture; the project keeps its own.
+    const clip = getClip(clipId)
+    const local = isLocalModel(modelId)
+    const job = insertJob({ projectId: clip.projectId, clipId, kind: 'image', provider: local ? 'comfyui' : 'higgsfield' })
+    const model = getImageModel(modelId)
+    if (local)
+      return startLocal(job, async () => {
+        const fresh = getClip(clipId)
+        const project = getProject(fresh.projectId)
+        const chars = charactersOf(project.id).filter((c) => fresh.characterIds.includes(c.id))
+        const prompt = clipPrompt(project, fresh, chars, [], promptLimit(model))
+        return { graph: localGraph(model, { prompt, aspect: project.aspectRatio, avoid: splitAvoid(fresh.visualPrompt).avoid }), payload: { target: 'clip-image', model: model.id, prompt } }
+      })
+    return startHiggsfield(job, async (ctx) => {
+      const fresh = getClip(clipId)
+      const project = getProject(fresh.projectId)
+      const chars = charactersOf(project.id).filter((c) => fresh.characterIds.includes(c.id))
+      const refs = await referenceUrls(model, chars, ctx.signal)
+      const prompt = clipPrompt(project, fresh, chars, refs.names, promptLimit(model))
+      return { endpoint: model.id, body: imageBody(model, prompt, project.aspectRatio, refs.urls), payload: { target: 'clip-image', model: model.id, prompt } }
+    })
+  }
   const clip = getClip(clipId)
   const local = isLocalModel(getImageModel(getProject(clip.projectId).imageModel))
   const job = insertJob({ projectId: clip.projectId, clipId, kind: 'image', provider: local ? 'comfyui' : 'higgsfield' })
@@ -794,6 +820,97 @@ async function startFallback(clipId: string, model: string, note: string): Promi
 const fallbackNotes = new Map<string, string>()
 
 const FLOW_VIDEO_ID = 'flow/veo'
+
+/** Cuts a picture to the project's frame shape (ChatGPT draws 2:3 or 1:1), centred. */
+async function cropToAspect(abs: string, aspect: AspectRatio): Promise<void> {
+  const crop = aspect === '9:16' ? "crop='min(iw,ih*9/16)':'min(ih,iw*16/9)'" : "crop='min(iw,ih*16/9)':'min(ih,iw*9/16)'"
+  const tmp = abs.replace(/(\.[a-z]+)$/i, '.crop$1')
+  await new Promise<void>((resolve, reject) =>
+    execFile(binPath(ffmpegStatic!), ['-hide_banner', '-loglevel', 'error', '-y', '-i', abs, '-vf', crop, tmp], { windowsHide: true }, (e, _o, err) =>
+      e ? reject(new Error(String(err).trim().split('\n').pop() || e.message)) : resolve()
+    )
+  )
+  renameSync(tmp, abs)
+}
+
+/**
+ * A clip picture made in the user's Chrome. Google Flow's agent gets the scene with @-mentions of the Flow
+ * characters (their faces come from Flow); ChatGPT gets the scene, the characters' cards as attachments and their
+ * descriptions. Both draw in the project's art style; the picture is cut to the project's frame shape.
+ */
+function generateBrowserImage(clipId: string, modelId: string): Job {
+  const clip = getClip(clipId)
+  const viaFlow = modelId === FLOW_IMAGE_MODEL
+  const job = insertJob({ projectId: clip.projectId, clipId, kind: 'image', provider: viaFlow ? 'flow' : 'chatgpt' })
+  emit.job(job)
+  return runJob(job, 'flow', async (ctx) => {
+    const fresh = getClip(clipId)
+    const project = getProject(fresh.projectId)
+    const style = getStyle(project.styleId)
+    const cast = charactersOf(project.id).filter((c) => fresh.characterIds.includes(c.id))
+    const { scene, avoid } = splitAvoid(fresh.visualPrompt)
+    const base = basePromptFor(project.id)
+    const vertical = project.aspectRatio === '9:16'
+    ctx.progress(0.03, viaFlow ? 'Готовим запрос для Flow' : 'Готовим запрос для ChatGPT')
+    let prompt: string
+    let files: string[] = []
+    if (viaFlow) {
+      const inFlow = cast.filter((c) => c.flowName.trim())
+      prompt = [
+        `Сгенерируй одно изображение, ${vertical ? 'вертикальное 9:16' : 'горизонтальное 16:9'}.`,
+        `Стиль: ${style.prompt}`,
+        inFlow.length ? `В кадре ${inFlow.map((c) => `@[${c.flowName.trim()}]`).join(' и ')} — сохрани ${inFlow.length > 1 ? 'их внешность' : 'внешность'} точно.` : '',
+        `Сцена: ${scene.trim() || fresh.story}`,
+        base?.visual ? `Место и люди бренда (в том же стиле): ${base.visual}` : '',
+        avoid ? `Не должно быть: ${avoid}.` : '',
+        'Одно изображение, не коллаж. Без текста, надписей и субтитров на изображении.',
+        'Не перемещай изображение в подборки.'
+      ]
+        .filter(Boolean)
+        .join('\n')
+    } else {
+      const withCards = cast.map((c) => ({ c, sheet: getAsset(c.sheetAssetId) })).filter((x) => x.sheet?.localPath)
+      files = withCards.map((x) => assetAbsPath(project.id, x.sheet!.localPath!))
+      prompt = [
+        `Нарисуй одно изображение по описанию ниже. Формат ${vertical ? 'вертикальный 2:3' : 'горизонтальный 3:2'}. Одна сцена, не коллаж. Без текста и надписей на изображении.`,
+        `Стиль изображения: ${style.prompt}`,
+        cast.length
+          ? `Персонажи в кадре: ${cast
+              .map((c) => {
+                const i = withCards.findIndex((x) => x.c.id === c.id)
+                return `${c.name}${i >= 0 ? ` (приложенная карта № ${i + 1} — сохрани лицо, причёску и внешность точно)` : ''}: ${c.description}`
+              })
+              .join('; ')}.`
+          : '',
+        `Сцена: ${scene.trim() || fresh.story}`,
+        base?.visual ? `Место и люди бренда (в том же стиле): ${base.visual}` : '',
+        avoid ? `Не должно быть: ${avoid}.` : ''
+      ]
+        .filter(Boolean)
+        .join('\n')
+    }
+    const payload: HfPayload = { target: 'clip-image', model: modelId, prompt }
+    updateJobPayload(job.id, payload)
+    let step = 0.08
+    const onProgress = (message: string): void => {
+      step = Math.min(0.9, step + 0.02)
+      ctx.progress(step, message)
+    }
+    const got = viaFlow ? await flow.makeMedia(prompt, 'image', ctx.signal, onProgress) : await chatgpt.makeImage(prompt, files, ctx.signal, onProgress)
+    record({ service: viaFlow ? 'flow' : 'chatgpt', model: viaFlow ? 'omni-image' : 'chatgpt-image', kind: 'image', amount: 1, unit: 'requests', costUsd: 0 })
+    ctx.progress(0.94, 'Сохраняем картинку')
+    // Cut to the frame shape before saving: a temporary file, then the usual save.
+    const tmpDir = join(dataDir(), 'tmp', 'browser-image')
+    mkdirSync(tmpDir, { recursive: true })
+    const tmp = join(tmpDir, `${job.id}${got.ext}`)
+    writeFileSync(tmp, got.bytes)
+    await cropToAspect(tmp, project.aspectRatio)
+    const id = await saveResult(job, payload, readFileSync(tmp), got.ext, { provider: viaFlow ? 'flow' : 'chatgpt', remoteId: null, remoteUrl: null })
+    rmSync(tmp, { force: true })
+    const note = 'note' in got ? got.note : null
+    return note ? { message: note } : id
+  })
+}
 
 /** `newTake`: a different take (another seed) — for a wrong stress or intonation in this one clip. */
 export function generateClipTts(clipId: string, newTake = false): Job {

@@ -19,7 +19,7 @@ import {
   Upload,
   Volume2
 } from 'lucide-react'
-import { FLOW_VIDEO_MODEL, TALKING_HEAD_MODEL, fitDuration, getImageModel, getVideoModel, isFlowModel, isLocalModel } from '@shared/higgsfield'
+import { CHATGPT_IMAGE_MODEL, FLOW_IMAGE_MODEL, FLOW_VIDEO_MODEL, LOCAL_MODELS, TALKING_HEAD_MODEL, fitDuration, getImageModel, getVideoModel, isFlowModel, isLocalModel } from '@shared/higgsfield'
 import { PACK_OF_MODEL } from '@shared/localModels'
 import { CAMERA_PRESETS, MOTION_STRENGTHS, cameraAt, cameraCss } from '@shared/motion'
 import { needsVisual } from '@shared/script'
@@ -136,6 +136,8 @@ function ClipPanel({ clip, index, total }: { clip: Clip; index: number; total: n
   // What makes the AI video of each clip (the project's model until another one is picked here).
   const [engines, setEngines] = useState<Record<string, string>>({})
   const [rewriting, setRewriting] = useState(false)
+  // What draws each clip's picture (the project's model until another one is picked here).
+  const [imgEngines, setImgEngines] = useState<Record<string, string>>({})
   // Which local video models are installed (Настройки › Локальные модели); the others are offered greyed out.
   const [installed, setInstalled] = useState<Record<string, boolean> | null>(null)
   useEffect(() => {
@@ -147,6 +149,19 @@ function ClipPanel({ clip, index, total }: { clip: Clip; index: number; total: n
   if (!project) return null
   const projectModel = getVideoModel(project.videoModel).id
   const engine = engines[clip.id] ?? projectModel
+  const projectImage = getImageModel(project.imageModel).id
+  const imgEngine = imgEngines[clip.id] ?? projectImage
+  const imgOptions: { id: string; label: string; off?: boolean }[] = [
+    ...LOCAL_MODELS.filter((m) => m.kind === 'image').map((m) => {
+      const pack = PACK_OF_MODEL[m.id]
+      const missing = !!installed && !!pack && !installed[pack]
+      return { id: m.id, label: `${m.name} — на этом компьютере${missing ? ' (не установлена)' : ''}`, off: missing }
+    }),
+    ...(isLocalModel(projectImage) ? [] : [{ id: projectImage, label: `${getImageModel(projectImage).name} — Higgsfield, кредиты` }]),
+    { id: FLOW_IMAGE_MODEL, label: 'Google Flow (Omni) — в Chrome, с персонажами Flow' },
+    { id: CHATGPT_IMAGE_MODEL, label: 'ChatGPT — в Chrome, с картами персонажей' }
+  ]
+  const makeImage = (): void => void run(() => window.api.generate.clipImage(clip.id, imgEngine === projectImage ? null : imgEngine))
   const engineOptions = ENGINES.some((o) => o.id === projectModel)
     ? ENGINES
     : [
@@ -242,7 +257,7 @@ function ClipPanel({ clip, index, total }: { clip: Clip; index: number; total: n
           )}
           {!image && !isRunning(imageJob) && (
             <div className="absolute inset-x-0 bottom-6 flex justify-center">
-              <Button variant="accent" icon={<Sparkles className="size-4" />} onClick={() => void run(() => window.api.generate.clipImage(clip.id))}>
+              <Button variant="accent" icon={<Sparkles className="size-4" />} onClick={makeImage}>
                 Создать картинку
               </Button>
             </div>
@@ -272,14 +287,32 @@ function ClipPanel({ clip, index, total }: { clip: Clip; index: number; total: n
       </div>
 
       <div className="scroll-thin flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-4">
+        <label className="flex items-center gap-2 text-[13px]">
+          <span className="shrink-0 font-semibold">Чем рисовать</span>
+          <select
+            value={imgEngine}
+            onChange={(e) => setImgEngines({ ...imgEngines, [clip.id]: e.target.value })}
+            aria-label="Чем рисовать картинку этого клипа"
+            className={cx(inputCls, 'h-9 min-w-0 flex-1 py-0 text-[13px]')}
+          >
+            {imgOptions.map((o) => (
+              <option key={o.id} value={o.id} disabled={o.off}>
+                {o.label}
+                {o.id === projectImage ? ' · модель проекта' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+        {(imgEngine === FLOW_IMAGE_MODEL || imgEngine === CHATGPT_IMAGE_MODEL) && (
+          <p className="-mt-2 text-xs text-muted">
+            {imgEngine === FLOW_IMAGE_MODEL
+              ? 'Flow нарисует во вкладке Chrome; лица персонажей — из Flow (поле «Персонаж в Google Flow»).'
+              : 'ChatGPT нарисует в своей вкладке Chrome; карты персонажей уйдут вложениями, чат потом скроется из истории. Действуют лимиты вашего тарифа.'}
+          </p>
+        )}
         <div className="flex flex-wrap gap-2">
           {image && (
-            <Button
-              size="sm"
-              icon={<RefreshCw className="size-4" />}
-              loading={isRunning(imageJob)}
-              onClick={() => void run(() => window.api.generate.clipImage(clip.id))}
-            >
+            <Button size="sm" icon={<RefreshCw className="size-4" />} loading={isRunning(imageJob)} onClick={makeImage}>
               Пересоздать
             </Button>
           )}

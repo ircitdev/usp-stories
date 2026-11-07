@@ -66,7 +66,8 @@ export interface StudioApi {
     motionPrompt(clipId: string, engine: string): Promise<string>
   }
   generate: {
-    clipImage(clipId: string): Promise<Job>
+    /** `modelId`: this picture only — a local or cloud model, flow/image or chatgpt/image (in Chrome). */
+    clipImage(clipId: string, modelId?: string | null): Promise<Job>
     /** `modelId` overrides the project's video model for this clip only. */
     clipVideo(clipId: string, modelId?: string | null): Promise<Job>
     /** `newTake`: another take of this clip's voice (pronunciation rules apply). */

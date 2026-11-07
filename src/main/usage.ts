@@ -24,7 +24,7 @@ export function inScope<T>(s: Scope, fn: () => T): T {
 }
 
 export interface Spend {
-  service: 'gemini' | 'openrouter' | 'groq' | 'custom' | 'ollama' | 'elevenlabs' | 'higgsfield' | 'flow' | 'gemini-web' | 'comfyui'
+  service: 'gemini' | 'openrouter' | 'groq' | 'custom' | 'ollama' | 'elevenlabs' | 'higgsfield' | 'flow' | 'gemini-web' | 'comfyui' | 'chatgpt'
   model?: string | null
   kind: 'llm' | 'tts' | 'image' | 'video' | 'music' | 'vision' | 'gpu'
   inputTokens?: number
@@ -99,7 +99,7 @@ function add(t: UsageTotals, r: Row): void {
   t.inputTokens += r.input_tokens
   t.outputTokens += r.output_tokens
   if (r.cost_usd != null) t.costUsd += r.cost_usd
-  else if (r.service !== 'comfyui' && r.service !== 'ollama' && r.service !== 'custom' && r.service !== 'gemini-web' && r.unit !== 'bonuses' && r.unit !== 'chars') t.unpriced++
+  else if (r.service !== 'comfyui' && r.service !== 'ollama' && r.service !== 'custom' && r.service !== 'gemini-web' && r.service !== 'chatgpt' && r.service !== 'flow' && r.unit !== 'bonuses' && r.unit !== 'chars') t.unpriced++
   if (r.unit === 'credits') t.credits += r.amount
   if (r.unit === 'bonuses') {
     t.bonuses += r.amount
@@ -120,7 +120,8 @@ const SERVICE_NAMES: Record<string, string> = {
   higgsfield: 'Higgsfield',
   flow: 'Google Flow',
   'gemini-web': 'Gemini в Chrome',
-  comfyui: 'ComfyUI (на этом компьютере)'
+  comfyui: 'ComfyUI (на этом компьютере)',
+  chatgpt: 'ChatGPT в Chrome'
 }
 const KIND_NAMES: Record<string, string> = { llm: 'текст', tts: 'озвучка', image: 'кадры', video: 'видео', music: 'музыка', vision: 'разбор видео', gpu: 'видеокарта' }
 

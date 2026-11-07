@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { extname, join } from 'node:path'
 import { app } from 'electron'
 import { dataDir } from '../paths'
 import type { ChromeCheck } from '@shared/types'
@@ -30,9 +30,15 @@ export interface FlowResult {
   approved: string | null
   /** The whole approval request of Flow's agent (it names the bonuses it spends). */
   approvedText: string | null
+  ext: string
 }
 
 export function makeVideo(prompt: string, signal: AbortSignal, onProgress: (message: string) => void): Promise<FlowResult> {
+  return makeMedia(prompt, 'video', signal, onProgress)
+}
+
+/** A picture or a video through Flow's agent; a picture comes as JPEG/PNG (`ext` tells which). */
+export function makeMedia(prompt: string, kind: 'video' | 'image', signal: AbortSignal, onProgress: (message: string) => void): Promise<FlowResult> {
   const dir = join(dataDir(), 'tmp', 'flow')
   mkdirSync(dir, { recursive: true })
   const stamp = `${Date.now()}`
@@ -48,12 +54,13 @@ export function makeVideo(prompt: string, signal: AbortSignal, onProgress: (mess
         FLOW_PROMPT: promptFile,
         FLOW_OUT: out,
         FLOW_PROJECT: getSettings().flowProjectUrl ?? '',
-        FLOW_TIMEOUT: '900'
+        FLOW_TIMEOUT: '900',
+        FLOW_KIND: kind
       }
     })
     const onAbort = (): void => void child.kill()
     signal.addEventListener('abort', onAbort, { once: true })
-    let result: { ok: boolean; error?: string; label?: string; approved?: string; approved_text?: string } | null = null
+    let result: { ok: boolean; error?: string; file?: string; label?: string; approved?: string; approved_text?: string } | null = null
     let buf = ''
     let errText = ''
     child.stdout.setEncoding('utf8')
@@ -82,8 +89,9 @@ export function makeVideo(prompt: string, signal: AbortSignal, onProgress: (mess
     child.on('close', () => {
       signal.removeEventListener('abort', onAbort)
       if (signal.aborted) return reject(new Error('Отменено'))
-      if (result?.ok && existsSync(out))
-        return resolve({ bytes: readFileSync(out), label: result.label ?? null, approved: result.approved ?? null, approvedText: result.approved_text ?? null })
+      const file = result?.file && existsSync(result.file) ? result.file : out
+      if (result?.ok && existsSync(file))
+        return resolve({ bytes: readFileSync(file), ext: extname(file).toLowerCase() || '.mp4', label: result.label ?? null, approved: result.approved ?? null, approvedText: result.approved_text ?? null })
       const last = errText.trim().split('\n').slice(-2).join(' ')
       reject(new Error(result?.error ?? (last ? `Google Flow: ${last}` : 'Google Flow не вернул видео')))
     })
