@@ -1,0 +1,231 @@
+@import 'tailwindcss';
+
+@theme {
+  /* Light theme of blog.uspeshnyy.ru: cool blue-white paper, navy ink, one teal-blue accent, soft depth. */
+  --color-paper: #eef4fa;
+  --color-surface: #ffffff;
+  --color-sand: #e5eef7;
+  --color-ink: #0d1f36;
+  --color-ink-2: #3a4d63;
+  --color-muted: #566d84;
+  --color-line: #dae5ef;
+  --color-line-2: #c4d5e5;
+  --color-line-3: #a7bed3;
+  --color-accent: #147aa6;
+  --color-accent-dark: #0f6288;
+  --color-accent-soft: #e6f2f8;
+  --color-sun: #ffc93c;
+  --color-sun-soft: #fff4d1;
+  --color-sun-ink: #6b4e00;
+  --color-ok-soft: #e1f2e6;
+  --color-ok-ink: #1d6a3a;
+  --color-info-soft: #e3eef8;
+  --color-info-ink: #164a78;
+  --color-bad-soft: #fbe5e3;
+  --color-bad-ink: #8a1f14;
+  --color-draft: #e9eff5;
+
+  --font-display: 'Onest Variable', 'Segoe UI', sans-serif;
+  --font-sans: 'Onest Variable', 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono Variable', Consolas, monospace;
+
+  /* Was a hard 2-4 px ink offset (neo-brutal); now the blog's soft lift with a faint accent glow. */
+  --shadow-ink: 0 1px 2px rgb(13 31 54 / 0.06), 0 4px 14px rgb(13 31 54 / 0.07);
+  --shadow-ink-md: 0 2px 4px rgb(13 31 54 / 0.06), 0 10px 26px rgb(13 31 54 / 0.09), 0 0 22px rgb(20 122 166 / 0.08);
+  --shadow-ink-lg: 0 4px 8px rgb(13 31 54 / 0.06), 0 16px 40px rgb(13 31 54 / 0.12), 0 0 28px rgb(20 122 166 / 0.12);
+}
+
+@font-face {
+  font-family: 'Poppins';
+  src: url('studio://fonts/Poppins-Medium.ttf') format('truetype');
+  font-weight: 500;
+}
+@font-face {
+  font-family: 'Poppins';
+  src: url('studio://fonts/Poppins-SemiBold.ttf') format('truetype');
+  font-weight: 600;
+}
+@font-face {
+  font-family: 'Poppins';
+  src: url('studio://fonts/Poppins-Bold.ttf') format('truetype');
+  font-weight: 700;
+}
+@font-face {
+  font-family: 'Poppins';
+  src: url('studio://fonts/Poppins-ExtraBold.ttf') format('truetype');
+  font-weight: 800;
+}
+
+/* Caption fonts (the same files libass uses for the export). */
+@font-face {
+  font-family: 'Golos Text';
+  src: url('studio://fonts/GolosText-ExtraBold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Anton';
+  src: url('studio://fonts/Anton-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Bebas Neue';
+  src: url('studio://fonts/BebasNeue-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Archivo Black';
+  src: url('studio://fonts/ArchivoBlack-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Lilita One';
+  src: url('studio://fonts/LilitaOne-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Titan One';
+  src: url('studio://fonts/TitanOne-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Luckiest Guy';
+  src: url('studio://fonts/LuckiestGuy-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Comic Neue';
+  src: url('studio://fonts/ComicNeue-Bold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Chewy';
+  src: url('studio://fonts/Chewy-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Bubblegum Sans';
+  src: url('studio://fonts/BubblegumSans-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Boogaloo';
+  src: url('studio://fonts/Boogaloo-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Sniglet';
+  src: url('studio://fonts/Sniglet-ExtraBold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Bangers';
+  src: url('studio://fonts/Bangers-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Permanent Marker';
+  src: url('studio://fonts/PermanentMarker-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'DM Serif Display';
+  src: url('studio://fonts/DMSerifDisplay-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    margin: 0;
+    /* The blog's light backdrop: two soft accent glows over the paper. */
+    background:
+      radial-gradient(1100px 500px at 85% -5%, rgb(51 164 212 / 0.1), transparent),
+      radial-gradient(900px 600px at 0% 110%, rgb(51 164 212 / 0.08), transparent),
+      var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+    color: inherit;
+  }
+  button:not(:disabled),
+  [role='button'] {
+    cursor: pointer;
+  }
+  ::selection {
+    background: rgb(20 122 166 / 0.22);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+  input[type='range'] {
+    accent-color: var(--color-accent);
+  }
+}
+
+@layer utilities {
+  .scroll-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line-2) transparent;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes pulse-soft {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+/*
+ * USP Stories look (blog.uspeshnyy.ru, light theme). Unlayered, so these win over Tailwind utilities:
+ * the app draws its strong outlines with border-ink; in the blog style they are a translucent accent line.
+ */
+.border-ink {
+  border-color: rgb(20 122 166 / 0.38);
+}
+/* Faint isometric grid at the window edges, fading out under the content, as on the blog. */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    repeating-linear-gradient(30deg, rgb(20 122 166 / 0.045) 0 1px, transparent 1px 28px),
+    repeating-linear-gradient(-30deg, rgb(20 122 166 / 0.045) 0 1px, transparent 1px 28px),
+    repeating-linear-gradient(90deg, rgb(20 122 166 / 0.035) 0 1px, transparent 1px 28px);
+  -webkit-mask-image: linear-gradient(90deg, #000, #000 calc(50% - 660px), transparent calc(50% - 300px), transparent calc(50% + 300px), #000 calc(50% + 660px), #000);
+  mask-image: linear-gradient(90deg, #000, #000 calc(50% - 660px), transparent calc(50% - 300px), transparent calc(50% + 300px), #000 calc(50% + 660px), #000);
+}
+
+/* A sub-panel sliding in from the right (e.g. all transition types). */
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+    opacity: 0.4;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+.slide-in-right {
+  animation: slide-in-right 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
