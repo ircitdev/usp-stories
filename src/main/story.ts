@@ -274,7 +274,7 @@ function baseLines(projectId: string): string[] {
   const base = basePromptFor(projectId)
   if (!base) return []
   return [
-    base.visual && `Overall look of all videos of this brand — follow it in every scene (setting, kind of people, palette, light, camera): ${base.visual}`,
+    base.visual && `The brand's setting and kind of people — use them in the scenes, but the project's art style wins over any photo, camera or realism wording here: ${base.visual}`,
     base.brief && `About the project (context only): ${base.brief}`
   ].filter(Boolean)
 }
@@ -299,13 +299,14 @@ export async function generateVisuals(projectId: string, mode: 'missing' | 'all'
     '4. Clothing must suit the place and action: no spacesuits or helmets inside a pressurized room, a spacesuit outside on an airless surface, period clothing for history. A recurring character keeps their default outfit (source "reference") unless the scene needs something else; then use "custom" and describe the new outfit in full. Describe the clothing of every extra too.',
     '5. Keep every recurring character visually consistent: reuse the existing characters exactly as given (same name, identity and outfit) and only add characters that are missing. Characters are only people who appear in several scenes; one-off people are extras described inside the scene.',
     '6. No readable text, signs, captions or labels in the image. Vary shot sizes, angles and camera moves across scenes so the video never feels repetitive.',
+    '7. Each scene is ONE still image of ONE moment. Never describe a montage, quick cuts, several shots, a split screen, a grid or a collage, even for a fast-paced opening: pick the single most telling moment.',
     'Write "world", "identity", "outfit", "setting", "action", "wardrobe", "framing", "avoid" and "motion" in English.'
   ].join('\n')
   const script = clips
     .map((c, i) => `Scene ${i + 1}: ${c.title}\nStory: ${c.story || '(none)'}\nNarration (${languageOf(project.language)}): ${c.narration || '(none)'}`)
     .join('\n\n')
   const prompt = [
-    `Visual style of the video (for your framing choices only, do not repeat it in the descriptions): ${getStyle(project.styleId).name}.`,
+    `Visual style of the video: ${getStyle(project.styleId).name}. Describe scenes so they suit it (do not write «photorealistic», «filmed on a phone» or camera-footage wording for a drawn style); do not repeat the style name in the descriptions.`,
     `Frame format: ${project.aspectRatio === '9:16' ? 'vertical 9:16' : 'horizontal 16:9'}.`,
     `Idea of the video: ${project.synopsis}`,
     ...baseLines(projectId),

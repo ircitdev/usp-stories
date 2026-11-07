@@ -107,7 +107,8 @@ function clipPrompt(project: Project, clip: Clip, chars: Character[], refNames: 
   const style = getStyle(project.styleId)
   const { scene, avoid } = splitAvoid(clip.visualPrompt)
   const wardrobe = /^\s*wardrobe\s*:/im.test(scene)
-  const parts = [`Scene:\n${scene}`]
+  // The art style leads: image models give the most weight to the start of a prompt.
+  const parts = [`Art style: ${style.prompt}`, `Scene (one single moment, one image — never a collage, grid, split screen or montage):\n${scene}`]
   if (chars.length)
     parts.push(
       `Recurring characters in this scene. Keep each one's body, face, hair and skin exactly as described${refNames.length ? ' and as on their reference sheet' : ''}.` +
@@ -122,9 +123,10 @@ function clipPrompt(project: Project, clip: Clip, chars: Character[], refNames: 
         (wardrobe ? 'Copy the costume from a sheet only for characters whose Wardrobe line says "default outfit". ' : 'Match the costume to the sheet. ') +
         'Do not copy the sheet layout, poses or plain background.'
     )
-  parts.push(`Art style: ${style.prompt}`)
   const base = basePromptFor(project.id)
-  if (base?.visual) parts.push(`Look of the brand's videos: ${base.visual}`)
+  // The brand's look gives the setting and the people; its camera and «realistic» words must not override the style.
+  if (base?.visual) parts.push(`Setting and people of the brand, drawn in the art style above (ignore any photo or camera wording here): ${base.visual}`)
+  parts.push(`Render strictly as: ${style.prompt}`)
   if (avoid) parts.push(`Must not appear in the image: ${avoid}.`)
   parts.push(`Frame format ${project.aspectRatio}, full-bleed composition.`)
   const full = parts.join('\n\n')

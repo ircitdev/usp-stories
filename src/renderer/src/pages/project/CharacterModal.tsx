@@ -259,7 +259,7 @@ function EditCharacter({ characterId, onClose }: { characterId: string | null; o
 
   return (
     <Modal open onClose={onClose} title="Лист персонажа" subtitle={`Служит образцом в ${usedIn} ${plural(usedIn, ['клипе', 'клипах', 'клипах'])}, чтобы персонаж везде выглядел одинаково.`} width={760}>
-      <div className="relative aspect-video overflow-hidden rounded-xl border-[1.5px] border-ink bg-paper">
+      <div id={`sheet-${c.id}`} className="relative aspect-video shrink-0 overflow-hidden rounded-xl border-[1.5px] border-ink bg-paper">
         {sheet ? (
           <img src={sheet.url} alt={`Лист персонажа ${c.name}`} className="size-full object-contain" />
         ) : running ? null : (
@@ -290,9 +290,22 @@ function EditCharacter({ characterId, onClose }: { characterId: string | null; o
         )}
       </div>
       <div className="grid grid-cols-[220px_minmax(0,1fr)] gap-4">
-        <Field label="Имя">
-          <input value={c.name} onChange={(e) => updateCharacter(c.id, { name: e.target.value })} className={cx(inputCls, 'h-11')} />
-        </Field>
+        <div className="flex flex-col gap-2.5">
+          <Field label="Имя">
+            <input value={c.name} onChange={(e) => updateCharacter(c.id, { name: e.target.value })} className={cx(inputCls, 'h-11')} />
+          </Field>
+          {/* The person at a glance: the left part of the sheet is the portrait. */}
+          {sheet && (
+            <button
+              type="button"
+              title="Показать лист персонажа целиком"
+              onClick={() => document.getElementById(`sheet-${c.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              className="h-[150px] w-full overflow-hidden rounded-xl border border-line bg-paper hover:border-ink-2"
+            >
+              <img src={sheet.url} alt={`Превью: ${c.name}`} className="size-full object-cover object-left-top" />
+            </button>
+          )}
+        </div>
         <Field
           label={
             <TipLabel text="Внешность">
